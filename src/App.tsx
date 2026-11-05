@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react'
+import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { Sidebar } from './components/layout/Sidebar'
 import { Header } from './components/layout/Header'
 import { FinancialIndicators } from './components/dashboard/FinancialIndicators'
@@ -13,63 +13,88 @@ import { BudgetsPage } from './components/budgets/BudgetsPage'
 import { GoalsPage } from './components/goals/GoalsPage'
 import { SettingsPage } from './components/settings/SettingsPage'
 import { TransactionFormModal } from './components/transactions/TransactionFormModal'
-import { storageService } from './services/storageService'
+import { dbService } from './services/dbService'
 import {
-  DEMO_SUMMARY,
-  MONTHLY_EVOLUTION,
-} from './data/mockData'
+  getCurrentPeriodLabel,
+  getKeyFromPeriodLabel,
+  getPreviousPeriodKey,
+  generateAvailablePeriods,
+  calculateMonthlyEvolutionWindow,
+} from './lib/periodUtils'
 import {
   NavPage,
   Transaction,
   Budget,
   Goal,
-  GoalMovement,
   PeriodSummary,
   MonthlyExpensePoint,
   CategoryDistribution,
 } from './types'
-import { CheckCircle2 } from 'lucide-react'
+import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import { AuthPage } from './components/auth/AuthPage'
 
 function AppContent() {
-  const { session, loading } = useAuth()
+  const { session, user, loading: authLoading } = useAuth()
   const [currentPage, setCurrentPage] = useState<NavPage>('overview')
-  const [selectedPeriod, setSelectedPeriod] = useState('Outubro de 2026')
 
-  // Carrega transações a partir do storage local seguro
-  const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    return storageService.getTransactions()
-  })
+  // Período selecionado inicializado com o mês atual real
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(() => getCurrentPeriodLabel())
 
-  // Carrega orçamentos persistidos
-  const [budgets, setBudgets] = useState<Budget[]>(() => {
-    return storageService.getBudgets()
-  })
-
-  // Carrega metas financeiras persistidas
-  const [goals, setGoals] = useState<Goal[]>(() => {
-    return storageService.getGoals()
-  })
+  // Estados com dados do Supabase
+  const [transactions, setTransactions] = useState<Transaction[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
+  const [goals, setGoals] = useState<Goal[]>([])
+  const [isDataLoading, setIsDataLoading] = useState(true)
+  const [dataError, setDataError] = useState<string | null>(null)
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isQuickAddOpen, setIsQuickAddOpen] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
 
-  // Salvar transações localmente
-  useEffect(() => {
-    storageService.saveTransactions(transactions)
+  // Períodos disponíveis computados dinamicamente (histórico + atual + 12 meses futuros)
+  const availablePeriods = useMemo(() => {
+    return generateAvailablePeriods(transactions)
   }, [transactions])
 
-  // Salvar orçamentos localmente
-  useEffect(() => {
-    storageService.saveBudgets(budgets)
-  }, [budgets])
+  const currentPeriodKey = useMemo(() => {
+    return getKeyFromPeriodLabel(selectedPeriod)
+  }, [selectedPeriod])
 
-  // Salvar metas localmente
+  const previousPeriodKey = useMemo(() => {
+    return getPreviousPeriodKey(currentPeriodKey)
+  }, [currentPeriodKey])
+
+  // Carrega todos os dados do Supabase para o usuário logado
+  const fetchUserData = useCallback(async () => {
+    if (!user) return
+    setIsDataLoading(true)
+    setDataError(null)
+
+    try {
+      const [txs, bgs, gls] = await Promise.all([
+        dbService.getTransactions(),
+        dbService.getBudgets(),
+        dbService.getGoals(),
+      ])
+      setTransactions(txs)
+      setBudgets(bgs)
+      setGoals(gls)
+    } catch (err: unknown) {
+      console.error('Erro ao sincronizar dados com o Supabase:', err)
+      setDataError(
+        'Falha ao carregar dados do Supabase. Verifique sua conexão ou se a migração SQL foi aplicada.'
+      )
+    } finally {
+      setIsDataLoading(false)
+    }
+  }, [user])
+
   useEffect(() => {
-    storageService.saveGoals(goals)
-  }, [goals])
+    if (user) {
+      fetchUserData()
+    }
+  }, [user, fetchUserData])
 
   // Disparar feedback toast
   const showToast = (message: string) => {
@@ -79,19 +104,28 @@ function AppContent() {
     }, 4000)
   }
 
-  // Recalcular métricas dinamicamente com base nas transações reais
+  // Recalcular métricas dinamicamente com base nas transações reais do período selecionado
   const summary: PeriodSummary = useMemo(() => {
-    const expenses = transactions
+    const periodTransactions = transactions.filter((t) =>
+      t.date.startsWith(currentPeriodKey)
+    )
+
+    const expenses = periodTransactions
       .filter((t) => t.type === 'expense')
       .reduce((acc, t) => acc + t.amount, 0)
 
-    const income = transactions
+    const income = periodTransactions
       .filter((t) => t.type === 'income')
       .reduce((acc, t) => acc + t.amount, 0)
 
     const balance = income - expenses
     const incomeCommittedRate = income > 0 ? (expenses / income) * 100 : 0
-    const previousMonthExpenses = DEMO_SUMMARY.previousMonthExpenses
+
+    // Despesas do mês anterior real
+    const previousMonthExpenses = transactions
+      .filter((t) => t.type === 'expense' && t.date.startsWith(previousPeriodKey))
+      .reduce((acc, t) => acc + t.amount, 0)
+
     const comparisonRate =
       previousMonthExpenses > 0
         ? ((expenses - previousMonthExpenses) / previousMonthExpenses) * 100
@@ -107,11 +141,13 @@ function AppContent() {
       comparisonRate,
       hasPreviousData: previousMonthExpenses > 0,
     }
-  }, [transactions, selectedPeriod])
+  }, [transactions, currentPeriodKey, previousPeriodKey, selectedPeriod])
 
-  // Recalcular distribuição de categorias dinamicamente com base nas transações reais
+  // Recalcular distribuição de categorias dinamicamente para o período selecionado
   const categoriesData: CategoryDistribution[] = useMemo(() => {
-    const expenseTx = transactions.filter((t) => t.type === 'expense')
+    const expenseTx = transactions.filter(
+      (t) => t.type === 'expense' && t.date.startsWith(currentPeriodKey)
+    )
     const totalExp = expenseTx.reduce((acc, t) => acc + t.amount, 0)
 
     const categoryTotals: Record<string, number> = {}
@@ -147,140 +183,157 @@ function AppContent() {
             c.name
           )
       )
-  }, [transactions])
+  }, [transactions, currentPeriodKey])
 
-  // Dados do gráfico atualizados com a despesa atual calculada
+  // Gráfico com janela de 6 meses real calculada a partir do Supabase
   const evolutionData: MonthlyExpensePoint[] = useMemo(() => {
-    return MONTHLY_EVOLUTION.map((point: MonthlyExpensePoint) => {
-      if (point.month === 'Out') {
-        return {
-          ...point,
-          expenses: summary.expenses,
-        }
-      }
-      return point
-    })
-  }, [summary.expenses])
+    return calculateMonthlyEvolutionWindow(currentPeriodKey, transactions)
+  }, [currentPeriodKey, transactions])
 
   // --- CRUD DE TRANSAÇÕES ---
-  const handleAddTransaction = (newTxData: Omit<Transaction, 'id'>) => {
-    const newTx: Transaction = {
-      ...newTxData,
-      id: `tx-${Date.now()}`,
+  const handleAddTransaction = async (newTxData: Omit<Transaction, 'id'>) => {
+    if (!user) return
+    try {
+      const created = await dbService.createTransaction(newTxData, user.id)
+      setTransactions((prev) => [created, ...prev])
+      showToast(`Lançamento "${created.description}" adicionado com sucesso.`)
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao cadastrar transação no Supabase.')
     }
-    setTransactions((prev) => [newTx, ...prev])
   }
 
-  const handleUpdateTransaction = (id: string, updatedTxData: Omit<Transaction, 'id'>) => {
-    setTransactions((prev) =>
-      prev.map((tx) => (tx.id === id ? { ...updatedTxData, id } : tx))
-    )
+  const handleUpdateTransaction = async (id: string, updatedTxData: Omit<Transaction, 'id'>) => {
+    if (!user) return
+    try {
+      await dbService.updateTransaction(id, updatedTxData, user.id)
+      setTransactions((prev) =>
+        prev.map((tx) => (tx.id === id ? { ...updatedTxData, id } : tx))
+      )
+      showToast('Lançamento atualizado com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao atualizar transação no Supabase.')
+    }
   }
 
-  const handleDeleteTransaction = (id: string) => {
-    setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+  const handleDeleteTransaction = async (id: string) => {
+    if (!user) return
+    try {
+      await dbService.deleteTransaction(id, user.id)
+      setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+      showToast('Lançamento removido com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao excluir transação no Supabase.')
+    }
   }
 
-  const handleResetData = () => {
-    storageService.clearAll()
-    setTransactions([])
-    setBudgets([])
-    setGoals([])
-    showToast('Dados reiniciados para o estado inicial limpo.')
+  const handleResetData = async () => {
+    await fetchUserData()
+    showToast('Dados sincronizados com o Supabase.')
   }
 
   // --- CRUD DE ORÇAMENTOS ---
-  const handleAddBudget = (budgetData: Omit<Budget, 'id'>) => {
-    const newBudget: Budget = {
-      ...budgetData,
-      id: `bg-${Date.now()}`,
-      createdAt: new Date().toISOString(),
+  const handleAddBudget = async (budgetData: Omit<Budget, 'id'>) => {
+    if (!user) return
+    try {
+      const created = await dbService.createBudget(budgetData, user.id)
+      setBudgets((prev) => [created, ...prev])
+      showToast('Orçamento registrado com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao salvar orçamento no Supabase.')
     }
-    setBudgets((prev) => [newBudget, ...prev])
   }
 
-  const handleUpdateBudget = (id: string, budgetData: Omit<Budget, 'id'>) => {
-    setBudgets((prev) =>
-      prev.map((b) => (b.id === id ? { ...budgetData, id } : b))
-    )
+  const handleUpdateBudget = async (id: string, budgetData: Omit<Budget, 'id'>) => {
+    if (!user) return
+    try {
+      await dbService.updateBudget(id, budgetData, user.id)
+      setBudgets((prev) =>
+        prev.map((b) => (b.id === id ? { ...budgetData, id } : b))
+      )
+      showToast('Orçamento atualizado com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao atualizar orçamento no Supabase.')
+    }
   }
 
-  const handleDeleteBudget = (id: string) => {
-    setBudgets((prev) => prev.filter((b) => b.id !== id))
+  const handleDeleteBudget = async (id: string) => {
+    if (!user) return
+    try {
+      await dbService.deleteBudget(id, user.id)
+      setBudgets((prev) => prev.filter((b) => b.id !== id))
+      showToast('Orçamento excluído com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao excluir orçamento no Supabase.')
+    }
   }
 
   // --- CRUD DE METAS ---
-  const handleAddGoal = (goalData: Omit<Goal, 'id' | 'createdAt'>) => {
-    const goalId = `gl-${Date.now()}`
-    const movements: GoalMovement[] = []
-
-    if (goalData.currentAmount > 0) {
-      movements.push({
-        id: `mov-${Date.now()}`,
-        goalId,
-        type: 'deposit',
-        amount: goalData.currentAmount,
-        date: new Date().toISOString().split('T')[0],
-        notes: 'Saldo inicial registrado',
-      })
+  const handleAddGoal = async (goalData: Omit<Goal, 'id' | 'createdAt'>) => {
+    if (!user) return
+    try {
+      const created = await dbService.createGoal(goalData, user.id)
+      setGoals((prev) => [created, ...prev])
+      showToast(`Meta "${created.title}" registrada com sucesso.`)
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao criar meta no Supabase.')
     }
+  }
 
-    const newGoal: Goal = {
-      ...goalData,
-      id: goalId,
-      initialAmount: goalData.currentAmount,
-      createdAt: new Date().toISOString(),
-      movements,
+  const handleUpdateGoal = async (id: string, goalData: Omit<Goal, 'id' | 'createdAt'>) => {
+    if (!user) return
+    try {
+      await dbService.updateGoal(id, goalData, user.id)
+      setGoals((prev) =>
+        prev.map((g) => (g.id === id ? { ...g, ...goalData } : g))
+      )
+      showToast('Meta atualizada com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao atualizar meta no Supabase.')
     }
-    setGoals((prev) => [newGoal, ...prev])
   }
 
-  const handleUpdateGoal = (id: string, goalData: Omit<Goal, 'id' | 'createdAt'>) => {
-    setGoals((prev) =>
-      prev.map((g) => (g.id === id ? { ...g, ...goalData } : g))
-    )
+  const handleDeleteGoal = async (id: string) => {
+    if (!user) return
+    try {
+      await dbService.deleteGoal(id, user.id)
+      setGoals((prev) => prev.filter((g) => g.id !== id))
+      showToast('Meta excluída com sucesso.')
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao excluir meta no Supabase.')
+    }
   }
 
-  const handleDeleteGoal = (id: string) => {
-    setGoals((prev) => prev.filter((g) => g.id !== id))
-  }
-
-  const handleMovementGoal = (
+  const handleMovementGoal = async (
     goalId: string,
     type: 'deposit' | 'withdrawal',
     amount: number,
     date: string,
     notes?: string
   ) => {
-    setGoals((prev) =>
-      prev.map((g) => {
-        if (g.id !== goalId) return g
-
-        if (type === 'withdrawal' && amount > g.currentAmount) {
-          throw new Error('Valor da retirada superior ao saldo acumulado disponível.')
-        }
-
-        const newCurrent =
-          type === 'deposit'
-            ? g.currentAmount + amount
-            : g.currentAmount - amount
-
-        const movement: GoalMovement = {
-          id: `mov-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          goalId,
-          type,
-          amount,
-          date,
-          notes,
-        }
-
-        return {
-          ...g,
-          currentAmount: newCurrent,
-          movements: [movement, ...(g.movements || [])],
-        }
-      })
-    )
+    if (!user) return
+    try {
+      await dbService.addGoalMovement(goalId, type, amount, date, user.id, notes)
+      const freshGoals = await dbService.getGoals()
+      setGoals(freshGoals)
+      showToast(
+        type === 'deposit'
+          ? 'Aporte registrado com sucesso.'
+          : 'Retirada registrada com sucesso.'
+      )
+    } catch (err: unknown) {
+      console.error(err)
+      showToast(err instanceof Error ? err.message : 'Erro ao registrar movimentação no Supabase.')
+      throw err
+    }
   }
 
   // Exportar dados para CSV
@@ -324,7 +377,7 @@ function AppContent() {
     showToast('Relatório CSV exportado com sucesso.')
   }
 
-  if (loading) {
+  if (authLoading) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 selection:bg-primary/20">
         <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center mb-4 shadow-subtle animate-pulse">
@@ -362,6 +415,7 @@ function AppContent() {
             onSelectPeriod={setSelectedPeriod}
             onResetData={handleResetData}
             onExportCSV={handleExportCSV}
+            periods={availablePeriods}
           />
         )}
 
@@ -377,6 +431,34 @@ function AppContent() {
         )}
 
         <main className="flex-1 p-6 lg:p-10 max-w-7xl w-full mx-auto space-y-8 animate-fade-in">
+          {/* Alerta de erro de dados */}
+          {dataError && (
+            <div
+              role="alert"
+              className="p-4 rounded-xl bg-danger/10 border border-danger/20 text-danger text-xs flex items-center justify-between gap-4 animate-fade-in"
+            >
+              <div className="flex items-center gap-2.5">
+                <AlertCircle size={16} className="shrink-0" />
+                <span className="font-medium">{dataError}</span>
+              </div>
+              <button
+                onClick={fetchUserData}
+                className="px-3 py-1.5 bg-surface text-text-primary border border-border-line rounded-lg hover:bg-muted-surface transition-colors font-medium text-xs shrink-0 flex items-center gap-1.5"
+              >
+                <RefreshCw size={12} />
+                <span>Tentar novamente</span>
+              </button>
+            </div>
+          )}
+
+          {/* Loader sutil de sincronização */}
+          {isDataLoading && (
+            <div className="p-3 bg-muted-surface/70 border border-border-line rounded-lg text-xs text-text-secondary flex items-center justify-center gap-2 animate-fade-in">
+              <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+              <span>Sincronizando dados com o Supabase...</span>
+            </div>
+          )}
+
           {currentPage === 'overview' && (
             <>
               {/* Indicadores Financeiros */}
@@ -471,7 +553,10 @@ function AppContent() {
           )}
 
           {currentPage === 'settings' && (
-            <SettingsPage onBackToOverview={() => setCurrentPage('overview')} />
+            <SettingsPage
+              onBackToOverview={() => setCurrentPage('overview')}
+              onDataRefresh={fetchUserData}
+            />
           )}
         </main>
       </div>

@@ -35,11 +35,11 @@ export const ComparativeMetricsBanner: React.FC<ComparativeMetricsBannerProps> =
 
   return (
     <div className="space-y-4">
-      {/* Aviso de Dados Demonstrativos */}
+      {/* Resumo do Período Comparativo */}
       <div className="flex items-center justify-between text-xs text-text-secondary">
-        <span className="inline-flex items-center gap-1.5 font-medium text-primary bg-muted-surface px-2.5 py-1 rounded-md border border-border-line">
-          <ShieldCheck size={13} strokeWidth={2} />
-          Demonstração comparativa: {currentPeriodLabel} vs {previousPeriodLabel}
+        <span className="inline-flex items-center gap-1.5 font-medium text-text-primary bg-muted-surface px-2.5 py-1 rounded-md border border-border-line">
+          <ShieldCheck size={13} strokeWidth={2} className="text-primary" />
+          Comparativo consolidado: {currentPeriodLabel} vs {previousPeriodLabel}
         </span>
         <span className="text-[11px] text-text-secondary hidden sm:inline">
           Cálculos auditáveis em tempo real

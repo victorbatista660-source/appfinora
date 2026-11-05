@@ -18,6 +18,7 @@ import {
 import { Transaction, PaymentMethod, TransactionType } from '../../types'
 import { FINORA_CATEGORIES, FINORA_PAYMENT_METHODS } from '../../data/mockData'
 import { formatCurrency, formatDateBR } from '../../lib/utils'
+import { generateAvailablePeriods, getCurrentPeriodKey } from '../../lib/periodUtils'
 import { Button } from '../ui/Button'
 import { TransactionSummaryHeader } from './TransactionSummaryHeader'
 import { TransactionFormModal } from './TransactionFormModal'
@@ -43,7 +44,12 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   const [typeFilter, setTypeFilter] = useState<'all' | 'expense' | 'income'>('all')
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
   const [paymentFilter, setPaymentFilter] = useState<string>('all')
-  const [periodFilter, setPeriodFilter] = useState<string>('2026-10')
+  const [periodFilter, setPeriodFilter] = useState<string>(() => getCurrentPeriodKey())
+
+  // Lista dinâmica compartilhada de períodos
+  const availablePeriods = useMemo(() => {
+    return generateAvailablePeriods(transactions)
+  }, [transactions])
 
   // Estados de Paginação
   const [currentPage, setCurrentPage] = useState(1)
@@ -298,7 +304,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               ))}
             </select>
 
-            {/* Filtro de Período */}
+            {/* Filtro de Período Dinâmico */}
             <select
               value={periodFilter}
               onChange={(e) => {
@@ -308,9 +314,12 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
               aria-label="Filtrar por período"
               className="bg-muted-surface border border-border-line rounded-lg px-3 py-2 text-xs text-text-primary focus:outline-none focus:ring-2 focus:ring-accent min-h-[40px]"
             >
-              <option value="2026-10">Outubro 2026</option>
-              <option value="2026-09">Setembro 2026</option>
               <option value="all">Todos os períodos</option>
+              {availablePeriods.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.label}
+                </option>
+              ))}
             </select>
 
             {/* Botão Limpar Filtros */}

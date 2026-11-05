@@ -1,25 +1,38 @@
 import React, { useState } from 'react'
 import { getSupabaseStatus, testSupabaseConnection, ConnectionTestResult } from '../../services/supabase'
+import { dbService } from '../../services/dbService'
+import { useAuth } from '../../contexts/AuthContext'
 import { Button } from '../ui/Button'
 import {
   Database,
   CheckCircle2,
   AlertCircle,
   RefreshCw,
-  ShieldCheck,
   Globe,
   KeyRound,
   ArrowLeft,
+  UploadCloud,
+  HardDrive,
+  ShieldCheck,
 } from 'lucide-react'
 
 interface SettingsPageProps {
   onBackToOverview: () => void
+  onDataRefresh?: () => Promise<void> | void
 }
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToOverview }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToOverview, onDataRefresh }) => {
+  const { user } = useAuth()
   const status = getSupabaseStatus()
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<ConnectionTestResult | null>(null)
+
+  // Estados da migração
+  const [migrating, setMigrating] = useState(false)
+  const [migrationResult, setMigrationResult] = useState<{
+    success: boolean
+    message: string
+  } | null>(null)
 
   const handleTestConnection = async () => {
     setTesting(true)
@@ -35,6 +48,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToOverview }) 
       })
     } finally {
       setTesting(false)
+    }
+  }
+
+  const handleMigrateData = async () => {
+    if (!user) {
+      setMigrationResult({
+        success: false,
+        message: 'Você precisa estar logado para importar os dados.',
+      })
+      return
+    }
+
+    setMigrating(true)
+    setMigrationResult(null)
+
+    try {
+      const res = await dbService.migrateLocalStorageToSupabase(user.id)
+      setMigrationResult({
+        success: res.success,
+        message: res.message,
+      })
+      if (onDataRefresh) {
+        await onDataRefresh()
+      }
+    } catch (err: unknown) {
+      setMigrationResult({
+        success: false,
+        message: err instanceof Error ? err.message : 'Falha na importação de dados.',
+      })
+    } finally {
+      setMigrating(false)
     }
   }
 
@@ -184,6 +228,75 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ onBackToOverview }) 
                     Detalhe técnico: {testResult.error}
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Cartão de Migração de Dados Locais */}
+      <div className="bg-surface border border-border-line rounded-xl p-6 lg:p-8 shadow-subtle space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-11 h-11 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+              <UploadCloud size={22} strokeWidth={1.75} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="font-display font-bold text-lg text-text-primary">
+                  Importar dados antigos
+                </h2>
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-text-secondary bg-muted-surface px-2.5 py-0.5 rounded-full border border-border-line">
+                  <HardDrive size={11} />
+                  LocalStorage → Supabase
+                </span>
+              </div>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Transfira transações, orçamentos e metas previamente salvos no navegador para sua conta na nuvem.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-4 bg-muted-surface/70 border border-border-line rounded-xl text-xs text-text-secondary space-y-2 leading-relaxed">
+          <p>
+            • A importação é <strong>inteligente e não duplicará registros</strong> se você clicar mais de uma vez.
+          </p>
+          <p>
+            • Todos os registros serão gravados exclusivamente com o seu identificador de usuário (<code className="text-text-primary font-mono">{user?.email || 'usuário atual'}</code>).
+          </p>
+        </div>
+
+        <div className="pt-2">
+          <Button
+            variant="primary"
+            disabled={migrating || !user}
+            onClick={handleMigrateData}
+            icon={<UploadCloud size={14} className={migrating ? 'animate-spin' : ''} />}
+          >
+            {migrating ? 'Importando dados...' : 'Importar dados antigos'}
+          </Button>
+        </div>
+
+        {/* Resultado da Migração */}
+        {migrationResult && (
+          <div
+            className={`p-4 rounded-xl border text-xs animate-fade-in ${
+              migrationResult.success
+                ? 'bg-primary/10 border-primary/30 text-text-primary'
+                : 'bg-danger/10 border-danger/30 text-text-primary'
+            }`}
+          >
+            <div className="flex items-start gap-2.5">
+              {migrationResult.success ? (
+                <CheckCircle2 size={16} className="text-primary shrink-0 mt-0.5" />
+              ) : (
+                <AlertCircle size={16} className="text-danger shrink-0 mt-0.5" />
+              )}
+              <div className="space-y-1">
+                <span className="font-semibold block">
+                  {migrationResult.message}
+                </span>
               </div>
             </div>
           </div>

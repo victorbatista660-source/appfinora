@@ -1,5 +1,5 @@
 import React from 'react'
-import { ArrowUpRight, ArrowDownRight, Info, TrendingUp } from 'lucide-react'
+import { ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { formatCurrency } from '../../lib/utils'
 
 interface ComparativeSummaryCardProps {
@@ -15,6 +15,7 @@ export const ComparativeSummaryCard: React.FC<ComparativeSummaryCardProps> = ({
 }) => {
   const nominalDiff = currentExpenses - previousExpenses
   const isHigher = nominalDiff > 0
+  const hasPrevious = previousExpenses > 0
 
   return (
     <div className="bg-surface border border-border-line rounded-xl p-5 shadow-card">
@@ -36,30 +37,38 @@ export const ComparativeSummaryCard: React.FC<ComparativeSummaryCardProps> = ({
 
           <div>
             <span className="text-[11px] font-semibold tracking-wider uppercase text-text-secondary block">
-              Resumo comparativo (Demonstração)
+              Resumo comparativo mensal
             </span>
-            <p className="text-sm lg:text-base font-display font-semibold text-text-primary mt-0.5">
-              Seus gastos estão{' '}
-              <span className={isHigher ? 'text-danger' : 'text-primary'}>
-                {Math.abs(rate).toLocaleString('pt-BR', {
-                  minimumFractionDigits: 1,
-                  maximumFractionDigits: 1,
-                })}%{' '}
-                {isHigher ? 'acima' : 'abaixo'}
-              </span>{' '}
-              do mês anterior.
-            </p>
-            <p className="text-xs text-text-secondary mt-1">
-              Variação calculada: {formatCurrency(Math.abs(nominalDiff))} em relação aos{' '}
-              {formatCurrency(previousExpenses)} registrados em setembro.
-            </p>
+            {hasPrevious ? (
+              <>
+                <p className="text-sm lg:text-base font-display font-semibold text-text-primary mt-0.5">
+                  Seus gastos estão{' '}
+                  <span className={isHigher ? 'text-danger' : 'text-primary'}>
+                    {Math.abs(rate).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 1,
+                      maximumFractionDigits: 1,
+                    })}%{' '}
+                    {isHigher ? 'acima' : 'abaixo'}
+                  </span>{' '}
+                  do mês anterior.
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  Variação calculada: {formatCurrency(Math.abs(nominalDiff))} em relação aos{' '}
+                  {formatCurrency(previousExpenses)} registrados no mês anterior.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-sm lg:text-base font-display font-semibold text-text-primary mt-0.5">
+                  Total de gastos no período: {formatCurrency(currentExpenses)}
+                </p>
+                <p className="text-xs text-text-secondary mt-1">
+                  Sem registros de despesas no mês anterior para cálculo de variação comparativa.
+                </p>
+              </>
+            )}
           </div>
         </div>
-
-        <span className="hidden sm:inline-flex items-center gap-1 text-[11px] text-text-secondary bg-muted-surface px-2.5 py-1 rounded-md border border-border-line shrink-0">
-          <Info size={12} />
-          Exemplo Fictício
-        </span>
       </div>
     </div>
   )

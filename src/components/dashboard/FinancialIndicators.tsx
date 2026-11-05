@@ -1,7 +1,7 @@
 import React from 'react'
 import { PeriodSummary } from '../../types'
 import { formatCurrency } from '../../lib/utils'
-import { ArrowDownLeft, ArrowUpRight, Wallet, Percent, ShieldCheck } from 'lucide-react'
+import { ArrowDownLeft, Percent, Calendar } from 'lucide-react'
 
 interface FinancialIndicatorsProps {
   summary: PeriodSummary
@@ -10,14 +10,14 @@ interface FinancialIndicatorsProps {
 export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({ summary }) => {
   return (
     <section aria-label="Indicadores Financeiros Principais" className="space-y-3">
-      {/* Aviso de Dados de Exemplo */}
+      {/* Indicador de Período Ativo */}
       <div className="flex items-center justify-between text-xs text-text-secondary">
-        <span className="inline-flex items-center gap-1.5 font-medium text-primary bg-muted-surface px-2.5 py-1 rounded-md border border-border-line">
-          <ShieldCheck size={13} strokeWidth={2} />
-          Dados demonstrativos do período selecionado ({summary.periodLabel})
+        <span className="inline-flex items-center gap-1.5 font-medium text-text-primary bg-muted-surface px-2.5 py-1 rounded-md border border-border-line">
+          <Calendar size={13} strokeWidth={2} className="text-primary" />
+          Período selecionado: <strong className="font-semibold text-text-primary">{summary.periodLabel}</strong>
         </span>
         <span className="text-[11px] text-text-secondary hidden sm:inline">
-          Base de cálculo: Receitas vs Despesas computadas
+          Base de cálculo: Receitas vs Despesas computadas no Supabase
         </span>
       </div>
 

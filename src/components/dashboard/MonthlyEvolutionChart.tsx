@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React from 'react'
 import {
   ResponsiveContainer,
   LineChart,
@@ -10,7 +10,7 @@ import {
 } from 'recharts'
 import { MonthlyExpensePoint } from '../../types'
 import { formatCurrency } from '../../lib/utils'
-import { TrendingDown, TrendingUp, HelpCircle } from 'lucide-react'
+import { TrendingUp } from 'lucide-react'
 
 interface MonthlyEvolutionChartProps {
   data: MonthlyExpensePoint[]
@@ -45,9 +45,7 @@ const CustomTooltip: React.FC<CustomTooltipProps> = ({ active, payload }) => {
 }
 
 export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({ data }) => {
-  const [showEmptyState, setShowEmptyState] = useState(false)
-
-  const activeData = showEmptyState ? [] : data
+  const hasExpenses = data.length > 0 && data.some((d) => d.expenses > 0)
 
   return (
     <div className="bg-surface border border-border-line rounded-xl p-6 lg:p-7 shadow-card">
@@ -57,44 +55,27 @@ export const MonthlyEvolutionChart: React.FC<MonthlyEvolutionChartProps> = ({ da
             Evolução dos gastos
           </h2>
           <p className="text-xs text-text-secondary mt-0.5 font-sans">
-            Acompanhe como suas despesas mudaram ao longo do tempo.
+            Acompanhe o comportamento das suas despesas na janela dos últimos 6 meses.
           </p>
-        </div>
-
-        {/* Alternância de Estado Vazio para Verificação do Design */}
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowEmptyState(!showEmptyState)}
-            className="text-[11px] text-text-secondary hover:text-text-primary px-2.5 py-1 bg-muted-surface border border-border-line rounded-md transition-colors"
-            title="Alternar estado vazio para inspeção visual"
-          >
-            {showEmptyState ? 'Ver com dados' : 'Testar estado vazio'}
-          </button>
         </div>
       </div>
 
       {/* Área do Gráfico */}
       <div className="mt-6 w-full h-[280px]">
-        {activeData.length === 0 ? (
+        {!hasExpenses ? (
           <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-muted-surface/40 border border-dashed border-border-line rounded-lg">
             <TrendingUp size={24} className="text-text-secondary/50 mb-2" />
             <span className="font-display font-medium text-sm text-text-primary">
-              Nenhuma despesa registrada no período
+              Nenhuma despesa registrada nesta janela
             </span>
             <p className="text-xs text-text-secondary mt-1 max-w-xs">
-              Quando novos lançamentos forem registrados, a curva de tendência mensal será traçada aqui.
+              Conforme você cadastrar novos lançamentos, a curva de tendência mensal será traçada automaticamente.
             </p>
-            <button
-              onClick={() => setShowEmptyState(false)}
-              className="mt-3 text-xs text-primary font-semibold hover:underline"
-            >
-              Restaurar dados demonstrativos
-            </button>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
-              data={activeData}
+              data={data}
               margin={{ top: 12, right: 16, left: 0, bottom: 6 }}
             >
               <CartesianGrid

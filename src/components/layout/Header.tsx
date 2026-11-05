@@ -5,35 +5,28 @@ import {
   Calendar,
   MoreVertical,
   Download,
-  RotateCcw,
-  Sliders,
   Check,
 } from 'lucide-react'
 import { Button } from '../ui/Button'
+import { PeriodOption } from '../../lib/periodUtils'
 
 interface HeaderProps {
   onOpenMobileMenu: () => void
   onOpenNewTransaction: () => void
   selectedPeriod: string
   onSelectPeriod: (period: string) => void
-  onResetData: () => void
+  onResetData?: () => void
   onExportCSV: () => void
+  periods?: PeriodOption[]
 }
-
-const AVAILABLE_PERIODS = [
-  'Outubro de 2026',
-  'Setembro de 2026',
-  'Agosto de 2026',
-  'Julho de 2026',
-]
 
 export const Header: React.FC<HeaderProps> = ({
   onOpenMobileMenu,
   onOpenNewTransaction,
   selectedPeriod,
   onSelectPeriod,
-  onResetData,
   onExportCSV,
+  periods = [],
 }) => {
   const [isPeriodMenuOpen, setIsPeriodMenuOpen] = useState(false)
   const [isActionsMenuOpen, setIsActionsMenuOpen] = useState(false)
@@ -92,22 +85,22 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
 
             {isPeriodMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-surface border border-border-line rounded-lg shadow-dropdown py-1.5 z-40 animate-fade-in">
-                <div className="px-3 py-1.5 text-[10px] font-semibold tracking-wider text-text-secondary uppercase">
+              <div className="absolute right-0 mt-2 w-56 bg-surface border border-border-line rounded-lg shadow-dropdown py-1.5 z-40 max-h-72 overflow-y-auto animate-fade-in">
+                <div className="px-3 py-1.5 text-[10px] font-semibold tracking-wider text-text-secondary uppercase sticky top-0 bg-surface border-b border-border-line/60">
                   Selecionar Período
                 </div>
-                {AVAILABLE_PERIODS.map((p) => (
+                {periods.map((p) => (
                   <button
-                    key={p}
+                    key={p.key}
                     onClick={() => {
-                      onSelectPeriod(p)
+                      onSelectPeriod(p.label)
                       setIsPeriodMenuOpen(false)
                     }}
                     className="w-full text-left px-3.5 py-2 text-xs text-text-primary hover:bg-muted-surface flex items-center justify-between transition-colors min-h-[38px]"
                   >
-                    <span>{p}</span>
-                    {selectedPeriod === p && (
-                      <Check size={14} className="text-primary" />
+                    <span>{p.label}</span>
+                    {selectedPeriod === p.label && (
+                      <Check size={14} className="text-primary shrink-0" />
                     )}
                   </button>
                 ))}
@@ -148,16 +141,6 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                   <Download size={14} className="text-text-secondary" />
                   <span>Exportar relatório (CSV)</span>
-                </button>
-                <button
-                  onClick={() => {
-                    onResetData()
-                    setIsActionsMenuOpen(false)
-                  }}
-                  className="w-full text-left px-3.5 py-2 text-xs text-text-primary hover:bg-muted-surface flex items-center gap-2.5 transition-colors min-h-[38px]"
-                >
-                  <RotateCcw size={14} className="text-text-secondary" />
-                  <span>Restaurar dados de exemplo</span>
                 </button>
               </div>
             )}
