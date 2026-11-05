@@ -28,9 +28,12 @@ import {
   MonthlyExpensePoint,
   CategoryDistribution,
 } from './types'
-import { CheckCircle2, Info } from 'lucide-react'
+import { CheckCircle2 } from 'lucide-react'
+import { AuthProvider, useAuth } from './contexts/AuthContext'
+import { AuthPage } from './components/auth/AuthPage'
 
-export function App() {
+function AppContent() {
+  const { session, loading } = useAuth()
   const [currentPage, setCurrentPage] = useState<NavPage>('overview')
   const [selectedPeriod, setSelectedPeriod] = useState('Outubro de 2026')
 
@@ -321,6 +324,23 @@ export function App() {
     showToast('Relatório CSV exportado com sucesso.')
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-4 selection:bg-primary/20">
+        <div className="w-12 h-12 rounded-xl bg-primary text-white flex items-center justify-center mb-4 shadow-subtle animate-pulse">
+          <span className="font-display font-bold text-2xl tracking-tighter">F</span>
+        </div>
+        <p className="text-xs text-text-secondary font-medium tracking-wide">
+          Carregando Finora...
+        </p>
+      </div>
+    )
+  }
+
+  if (!session) {
+    return <AuthPage />
+  }
+
   return (
     <div className="min-h-screen bg-background text-text-primary flex">
       {/* 1. Navegação Lateral */}
@@ -466,6 +486,14 @@ export function App() {
         }}
       />
     </div>
+  )
+}
+
+export function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   )
 }
 

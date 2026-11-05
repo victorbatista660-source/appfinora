@@ -9,12 +9,13 @@ import {
   MessageSquare,
   Settings,
   SlidersHorizontal,
-  ChevronRight,
   ShieldCheck,
+  LogOut,
 } from 'lucide-react'
 import { NavPage } from '../../types'
 import { cn } from '../../lib/utils'
 import { isSupabaseConfigured } from '../../services/supabase'
+import { useAuth } from '../../contexts/AuthContext'
 
 interface SidebarProps {
   currentPage: NavPage
@@ -29,6 +30,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isMobileOpen,
   onCloseMobile,
 }) => {
+  const { profileName, profileEmail, userInitials, signOut } = useAuth()
+
   const menuItems: { id: NavPage; label: string; icon: React.ReactNode }[] = [
     {
       id: 'overview',
@@ -137,28 +140,44 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Perfil do Usuário e Preferências */}
-      <div className="p-3.5 border-t border-border-line flex items-center justify-between bg-surface">
-        <div className="flex items-center gap-3">
+      <div className="p-3.5 border-t border-border-line flex items-center justify-between bg-surface gap-1.5">
+        <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div className="w-9 h-9 rounded-full bg-muted-surface border border-border-line flex items-center justify-center font-display font-semibold text-text-primary text-xs shrink-0">
-            YC
+            {userInitials}
           </div>
-          <div className="text-left overflow-hidden">
-            <span className="text-xs font-semibold text-text-primary block truncate leading-tight">
-              Yan Carvalho
+          <div className="text-left overflow-hidden min-w-0 flex-1">
+            <span
+              className="text-xs font-semibold text-text-primary block truncate leading-tight"
+              title={profileName}
+            >
+              {profileName}
             </span>
-            <span className="text-[11px] text-text-secondary block truncate mt-0.5">
-              yan@finora.com
+            <span
+              className="text-[11px] text-text-secondary block truncate mt-0.5"
+              title={profileEmail}
+            >
+              {profileEmail}
             </span>
           </div>
         </div>
-        <button
-          onClick={() => onSelectPage('settings')}
-          aria-label="Preferências do usuário"
-          className="p-2 text-text-secondary hover:text-text-primary hover:bg-muted-surface rounded-md transition-colors"
-          title="Preferências"
-        >
-          <SlidersHorizontal size={15} strokeWidth={1.75} />
-        </button>
+        <div className="flex items-center gap-0.5 shrink-0">
+          <button
+            onClick={() => onSelectPage('settings')}
+            aria-label="Preferências do usuário"
+            className="p-2 text-text-secondary hover:text-text-primary hover:bg-muted-surface rounded-md transition-colors"
+            title="Preferências"
+          >
+            <SlidersHorizontal size={15} strokeWidth={1.75} />
+          </button>
+          <button
+            onClick={() => signOut()}
+            aria-label="Sair da conta"
+            className="p-2 text-text-secondary hover:text-danger hover:bg-danger/10 rounded-md transition-colors"
+            title="Sair da conta"
+          >
+            <LogOut size={15} strokeWidth={1.75} />
+          </button>
+        </div>
       </div>
     </aside>
   )
