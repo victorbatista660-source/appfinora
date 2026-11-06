@@ -22,6 +22,10 @@ import {
   calculateMonthlyEvolutionWindow,
 } from './lib/periodUtils'
 import {
+  calculateFinancialMetrics,
+  FinancialCalculationResult,
+} from './lib/accountUtils'
+import {
   NavPage,
   Transaction,
   Budget,
@@ -29,6 +33,7 @@ import {
   PeriodSummary,
   MonthlyExpensePoint,
   CategoryDistribution,
+  AccountSettings,
 } from './types'
 import { CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
@@ -45,6 +50,11 @@ function AppContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [budgets, setBudgets] = useState<Budget[]>([])
   const [goals, setGoals] = useState<Goal[]>([])
+  const [accountSettings, setAccountSettings] = useState<AccountSettings>({
+    creditCardLimit: 0,
+    initialBalanceDebit: 0,
+    initialBalanceMeal: 0,
+  })
   const [isDataLoading, setIsDataLoading] = useState(true)
   const [dataError, setDataError] = useState<string | null>(null)
 
@@ -72,14 +82,16 @@ function AppContent() {
     setDataError(null)
 
     try {
-      const [txs, bgs, gls] = await Promise.all([
+      const [txs, bgs, gls, cfg] = await Promise.all([
         dbService.getTransactions(),
         dbService.getBudgets(),
         dbService.getGoals(),
+        dbService.getAccountSettings(user.id),
       ])
       setTransactions(txs)
       setBudgets(bgs)
       setGoals(gls)
+      setAccountSettings(cfg)
     } catch (err: unknown) {
       console.error('Erro ao sincronizar dados com o Supabase:', err)
       setDataError(
@@ -104,44 +116,15 @@ function AppContent() {
     }, 4000)
   }
 
-  // Recalcular métricas dinamicamente com base nas transações reais do período selecionado
-  const summary: PeriodSummary = useMemo(() => {
-    const periodTransactions = transactions.filter((t) =>
-      t.date.startsWith(currentPeriodKey)
+  // Motor único de cálculo das 3 contas e totais para o período ativo
+  const financialMetrics: FinancialCalculationResult = useMemo(() => {
+    return calculateFinancialMetrics(
+      transactions,
+      currentPeriodKey,
+      accountSettings,
+      previousPeriodKey
     )
-
-    const expenses = periodTransactions
-      .filter((t) => t.type === 'expense')
-      .reduce((acc, t) => acc + t.amount, 0)
-
-    const income = periodTransactions
-      .filter((t) => t.type === 'income')
-      .reduce((acc, t) => acc + t.amount, 0)
-
-    const balance = income - expenses
-    const incomeCommittedRate = income > 0 ? (expenses / income) * 100 : 0
-
-    // Despesas do mês anterior real
-    const previousMonthExpenses = transactions
-      .filter((t) => t.type === 'expense' && t.date.startsWith(previousPeriodKey))
-      .reduce((acc, t) => acc + t.amount, 0)
-
-    const comparisonRate =
-      previousMonthExpenses > 0
-        ? ((expenses - previousMonthExpenses) / previousMonthExpenses) * 100
-        : 0
-
-    return {
-      periodLabel: selectedPeriod,
-      income,
-      expenses,
-      balance,
-      incomeCommittedRate,
-      previousMonthExpenses,
-      comparisonRate,
-      hasPreviousData: previousMonthExpenses > 0,
-    }
-  }, [transactions, currentPeriodKey, previousPeriodKey, selectedPeriod])
+  }, [transactions, currentPeriodKey, accountSettings, previousPeriodKey])
 
   // Recalcular distribuição de categorias dinamicamente para o período selecionado
   const categoriesData: CategoryDistribution[] = useMemo(() => {
@@ -462,13 +445,16 @@ function AppContent() {
           {currentPage === 'overview' && (
             <>
               {/* Indicadores Financeiros */}
-              <FinancialIndicators summary={summary} />
+              <FinancialIndicators
+                metrics={financialMetrics}
+                periodLabel={selectedPeriod}
+              />
 
               {/* Resumo Comparativo */}
               <ComparativeSummaryCard
-                currentExpenses={summary.expenses}
-                previousExpenses={summary.previousMonthExpenses}
-                rate={summary.comparisonRate}
+                currentExpenses={financialMetrics.periodExpenses}
+                previousExpenses={financialMetrics.previousMonthExpenses}
+                rate={financialMetrics.comparisonRate}
               />
 
               {/* Seção Central em Grid: Gráfico de Evolução e Distribuição por Categoria */}
@@ -479,7 +465,7 @@ function AppContent() {
                 <div className="lg:col-span-5">
                   <CategoryDistributionList
                     categories={categoriesData}
-                    totalExpenses={summary.expenses}
+                    totalExpenses={financialMetrics.periodExpenses}
                   />
                 </div>
               </div>
@@ -496,6 +482,7 @@ function AppContent() {
           {currentPage === 'transactions' && (
             <TransactionsPage
               transactions={transactions}
+              accountSettings={accountSettings}
               onAddTransaction={handleAddTransaction}
               onUpdateTransaction={handleUpdateTransaction}
               onDeleteTransaction={handleDeleteTransaction}
@@ -517,7 +504,7 @@ function AppContent() {
               </div>
               <CategoryDistributionList
                 categories={categoriesData}
-                totalExpenses={summary.expenses}
+                totalExpenses={financialMetrics.periodExpenses}
               />
             </div>
           )}

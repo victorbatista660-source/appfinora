@@ -15,10 +15,15 @@ import {
   Layers,
   CheckCircle2,
 } from 'lucide-react'
-import { Transaction, PaymentMethod, TransactionType } from '../../types'
+import { Transaction, PaymentMethod, TransactionType, AccountSettings } from '../../types'
 import { FINORA_CATEGORIES, FINORA_PAYMENT_METHODS } from '../../data/mockData'
 import { formatCurrency, formatDateBR } from '../../lib/utils'
-import { generateAvailablePeriods, getCurrentPeriodKey } from '../../lib/periodUtils'
+import {
+  generateAvailablePeriods,
+  getCurrentPeriodKey,
+  getPeriodLabelFromKey,
+} from '../../lib/periodUtils'
+import { calculateFinancialMetrics } from '../../lib/accountUtils'
 import { Button } from '../ui/Button'
 import { TransactionSummaryHeader } from './TransactionSummaryHeader'
 import { TransactionFormModal } from './TransactionFormModal'
@@ -26,6 +31,7 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog'
 
 interface TransactionsPageProps {
   transactions: Transaction[]
+  accountSettings?: AccountSettings
   onAddTransaction: (newTx: Omit<Transaction, 'id'>) => void
   onUpdateTransaction: (id: string, updatedTx: Omit<Transaction, 'id'>) => void
   onDeleteTransaction: (id: string) => void
@@ -34,6 +40,7 @@ interface TransactionsPageProps {
 
 export const TransactionsPage: React.FC<TransactionsPageProps> = ({
   transactions,
+  accountSettings,
   onAddTransaction,
   onUpdateTransaction,
   onDeleteTransaction,
@@ -88,8 +95,33 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
     })
   }, [transactions, searchTerm, typeFilter, categoryFilter, paymentFilter, periodFilter])
 
-  // Recálculo do Resumo Superior com base nos itens filtrados
+  // Rótulo dinâmico do período atual filtrado
+  const activePeriodLabel = useMemo(() => {
+    return periodFilter === 'all'
+      ? 'Todos os períodos'
+      : getPeriodLabelFromKey(periodFilter)
+  }, [periodFilter])
+
+  // Recálculo do Resumo Superior usando o motor único oficial de cálculo
   const summaryTotals = useMemo(() => {
+    const hasSecondaryFilters =
+      Boolean(searchTerm) ||
+      typeFilter !== 'all' ||
+      categoryFilter !== 'all' ||
+      paymentFilter !== 'all'
+
+    // Se nenhum filtro secundário estiver ativo e o usuário filtrou por um mês específico,
+    // utiliza o motor oficial compartilhado, garantindo valores idênticos aos da Visão Geral.
+    if (!hasSecondaryFilters && periodFilter !== 'all') {
+      const metrics = calculateFinancialMetrics(transactions, periodFilter, accountSettings)
+      return {
+        income: metrics.periodIncome,
+        expenses: metrics.periodExpenses,
+        balance: metrics.periodNetResult,
+      }
+    }
+
+    // Se houver busca ou filtros de categoria/tipo/pagamento, computa sobre os itens filtrados
     const income = filteredTransactions
       .filter((t) => t.type === 'income')
       .reduce((acc, t) => acc + t.amount, 0)
@@ -103,7 +135,16 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
       expenses,
       balance: income - expenses,
     }
-  }, [filteredTransactions])
+  }, [
+    transactions,
+    filteredTransactions,
+    periodFilter,
+    searchTerm,
+    typeFilter,
+    categoryFilter,
+    paymentFilter,
+    accountSettings,
+  ])
 
   // Paginação dos dados filtrados
   const totalPages = Math.max(1, Math.ceil(filteredTransactions.length / pageSize))
@@ -193,13 +234,7 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
         income={summaryTotals.income}
         expenses={summaryTotals.expenses}
         balance={summaryTotals.balance}
-        periodLabel={
-          periodFilter === '2026-10'
-            ? 'Outubro 2026'
-            : periodFilter === '2026-09'
-            ? 'Setembro 2026'
-            : 'Todos os períodos'
-        }
+        periodLabel={activePeriodLabel}
       />
 
       {/* 3. Barra de Filtros Completa */}

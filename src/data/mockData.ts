@@ -21,6 +21,8 @@ export const FINORA_PAYMENT_METHODS: PaymentMethod[] = [
   'Transferência',
   'Boleto',
   'Dinheiro',
+  'Vale Alimentação/Refeição',
+  'Outros',
 ]
 
 export const CATEGORIES_LIST = [

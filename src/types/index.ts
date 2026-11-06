@@ -7,6 +7,8 @@ export type PaymentMethod =
   | 'Transferência'
   | 'Boleto'
   | 'Dinheiro'
+  | 'Vale Alimentação/Refeição'
+  | 'Outros'
 
 export type TransactionOrigin = 'manual' | 'whatsapp'
 
@@ -103,4 +105,12 @@ export interface PeriodSummary {
   previousMonthExpenses: number
   comparisonRate: number
   hasPreviousData: boolean
+}
+
+export interface AccountSettings {
+  id?: string
+  userId?: string
+  creditCardLimit: number
+  initialBalanceDebit: number
+  initialBalanceMeal: number
 }

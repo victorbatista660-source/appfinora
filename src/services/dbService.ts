@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import { Transaction, Budget, Goal, GoalMovement, Category } from '../types'
+import { Transaction, Budget, Goal, GoalMovement, Category, AccountSettings } from '../types'
 
 function ensureUuid(id?: string): string {
   const isUuid = id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
@@ -506,7 +506,82 @@ export const dbService = {
   },
 
   // ==========================================
-  // 5. MIGRAÇÃO ÚNICA LOCALSTORAGE -> SUPABASE
+  // 5. CONFIGURAÇÕES DE CONTAS E LIMITES
+  // ==========================================
+  async getAccountSettings(userId: string): Promise<AccountSettings> {
+    const defaultSettings: AccountSettings = {
+      creditCardLimit: 0,
+      initialBalanceDebit: 0,
+      initialBalanceMeal: 0,
+    }
+
+    if (!supabase) return defaultSettings
+
+    const { data, error } = await supabase
+      .from('account_settings')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (error) {
+      console.error('Erro ao buscar configurações de conta do Supabase:', error)
+      return defaultSettings
+    }
+
+    if (!data) {
+      return defaultSettings
+    }
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      creditCardLimit: Number(data.credit_card_limit || 0),
+      initialBalanceDebit: Number(data.initial_balance_debit || 0),
+      initialBalanceMeal: Number(data.initial_balance_meal || 0),
+    }
+  },
+
+  async saveAccountSettings(
+    settings: {
+      creditCardLimit: number
+      initialBalanceDebit: number
+      initialBalanceMeal: number
+    },
+    userId: string
+  ): Promise<AccountSettings> {
+    if (!supabase) throw new Error('Cliente Supabase não configurado.')
+
+    const { data, error } = await supabase
+      .from('account_settings')
+      .upsert(
+        {
+          user_id: userId,
+          credit_card_limit: settings.creditCardLimit,
+          initial_balance_debit: settings.initialBalanceDebit,
+          initial_balance_meal: settings.initialBalanceMeal,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      )
+      .select()
+      .single()
+
+    if (error) {
+      console.error('Erro ao salvar configurações de conta no Supabase:', error)
+      throw error
+    }
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      creditCardLimit: Number(data.credit_card_limit || 0),
+      initialBalanceDebit: Number(data.initial_balance_debit || 0),
+      initialBalanceMeal: Number(data.initial_balance_meal || 0),
+    }
+  },
+
+  // ==========================================
+  // 6. MIGRAÇÃO ÚNICA LOCALSTORAGE -> SUPABASE
   // ==========================================
   hasLocalStorageData(): boolean {
     try {
