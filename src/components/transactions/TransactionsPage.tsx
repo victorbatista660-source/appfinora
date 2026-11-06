@@ -32,9 +32,19 @@ import { DeleteConfirmDialog } from './DeleteConfirmDialog'
 interface TransactionsPageProps {
   transactions: Transaction[]
   accountSettings?: AccountSettings
-  onAddTransaction: (newTx: Omit<Transaction, 'id'>) => void
-  onUpdateTransaction: (id: string, updatedTx: Omit<Transaction, 'id'>) => void
-  onDeleteTransaction: (id: string) => void
+  onAddTransaction: (
+    newTx: Omit<Transaction, 'id'>,
+    options?: { installmentsCount?: number }
+  ) => void
+  onUpdateTransaction: (
+    id: string,
+    updatedTx: Omit<Transaction, 'id'>,
+    options?: { applyToGroup?: boolean }
+  ) => void
+  onDeleteTransaction: (
+    id: string,
+    options?: { deleteMode?: 'single' | 'all'; groupId?: string }
+  ) => void
   showToast: (msg: string) => void
 }
 
@@ -171,21 +181,26 @@ export const TransactionsPage: React.FC<TransactionsPageProps> = ({
     setIsFormOpen(true)
   }
 
-  const handleSaveForm = (txData: Omit<Transaction, 'id'>, idToEdit?: string) => {
+  const handleSaveForm = (
+    txData: Omit<Transaction, 'id'>,
+    idToEdit?: string,
+    options?: { installmentsCount?: number; applyToGroup?: boolean }
+  ) => {
     if (idToEdit) {
-      onUpdateTransaction(idToEdit, txData)
+      onUpdateTransaction(idToEdit, txData, { applyToGroup: options?.applyToGroup })
       showToast(`Transação "${txData.description}" atualizada com sucesso.`)
     } else {
-      onAddTransaction(txData)
-      showToast(`Transação "${txData.description}" cadastrada com sucesso.`)
+      onAddTransaction(txData, { installmentsCount: options?.installmentsCount })
     }
     setIsFormOpen(false)
   }
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = (deleteMode: 'single' | 'all') => {
     if (transactionToDelete) {
-      onDeleteTransaction(transactionToDelete.id)
-      showToast(`Transação "${transactionToDelete.description}" excluída.`)
+      onDeleteTransaction(transactionToDelete.id, {
+        deleteMode,
+        groupId: transactionToDelete.installmentGroupId,
+      })
       setTransactionToDelete(null)
     }
   }

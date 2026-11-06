@@ -63,6 +63,10 @@ export const dbService = {
       paymentMethod: row.payment_method,
       origin: row.origin || 'manual',
       notes: row.notes || undefined,
+      installmentGroupId: row.installment_group_id || undefined,
+      installmentNumber: row.installment_number || 1,
+      installmentTotal: row.installment_total || 1,
+      totalAmount: row.total_amount ? Number(row.total_amount) : Number(row.amount),
     }))
   },
 
@@ -87,6 +91,10 @@ export const dbService = {
         payment_method: tx.paymentMethod,
         origin: tx.origin || 'manual',
         notes: tx.notes || null,
+        installment_group_id: tx.installmentGroupId || null,
+        installment_number: tx.installmentNumber || 1,
+        installment_total: tx.installmentTotal || 1,
+        total_amount: tx.totalAmount || tx.amount,
       })
       .select()
       .single()
@@ -107,7 +115,64 @@ export const dbService = {
       paymentMethod: data.payment_method,
       origin: data.origin,
       notes: data.notes || undefined,
+      installmentGroupId: data.installment_group_id || undefined,
+      installmentNumber: data.installment_number || 1,
+      installmentTotal: data.installment_total || 1,
+      totalAmount: data.total_amount ? Number(data.total_amount) : Number(data.amount),
     }
+  },
+
+  async createTransactionsBatch(
+    txs: Array<Omit<Transaction, 'id'> & { id?: string }>,
+    userId: string
+  ): Promise<Transaction[]> {
+    if (!supabase) throw new Error('Cliente Supabase não configurado.')
+    if (txs.length === 0) return []
+
+    const rows = txs.map((tx) => ({
+      id: ensureUuid(tx.id),
+      user_id: userId,
+      description: tx.description,
+      establishment: tx.establishment || null,
+      amount: tx.amount,
+      type: tx.type,
+      category: tx.category,
+      date: tx.date,
+      payment_method: tx.paymentMethod,
+      origin: tx.origin || 'manual',
+      notes: tx.notes || null,
+      installment_group_id: tx.installmentGroupId || null,
+      installment_number: tx.installmentNumber || 1,
+      installment_total: tx.installmentTotal || 1,
+      total_amount: tx.totalAmount || tx.amount,
+    }))
+
+    const { data, error } = await supabase
+      .from('transactions')
+      .insert(rows)
+      .select()
+
+    if (error) {
+      console.error('Erro ao inserir lote de parcelas no Supabase:', error)
+      throw error
+    }
+
+    return (data || []).map((row) => ({
+      id: row.id,
+      description: row.description,
+      establishment: row.establishment || undefined,
+      amount: Number(row.amount),
+      type: row.type,
+      category: row.category,
+      date: row.date,
+      paymentMethod: row.payment_method,
+      origin: row.origin,
+      notes: row.notes || undefined,
+      installmentGroupId: row.installment_group_id || undefined,
+      installmentNumber: row.installment_number || 1,
+      installmentTotal: row.installment_total || 1,
+      totalAmount: row.total_amount ? Number(row.total_amount) : Number(row.amount),
+    }))
   },
 
   async updateTransaction(
@@ -129,12 +194,43 @@ export const dbService = {
         payment_method: tx.paymentMethod,
         origin: tx.origin || 'manual',
         notes: tx.notes || null,
+        installment_group_id: tx.installmentGroupId || null,
+        installment_number: tx.installmentNumber || 1,
+        installment_total: tx.installmentTotal || 1,
+        total_amount: tx.totalAmount || tx.amount,
       })
       .eq('id', id)
       .eq('user_id', userId)
 
     if (error) {
       console.error('Erro ao atualizar transação no Supabase:', error)
+      throw error
+    }
+  },
+
+  async updateInstallmentGroup(
+    groupId: string,
+    updates: { description?: string; amount?: number },
+    userId: string
+  ): Promise<void> {
+    if (!supabase) throw new Error('Cliente Supabase não configurado.')
+
+    const updatePayload: Record<string, unknown> = {}
+    if (updates.description !== undefined) {
+      updatePayload.description = updates.description
+    }
+    if (updates.amount !== undefined) {
+      updatePayload.amount = updates.amount
+    }
+
+    const { error } = await supabase
+      .from('transactions')
+      .update(updatePayload)
+      .eq('installment_group_id', groupId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('Erro ao atualizar grupo de parcelas no Supabase:', error)
       throw error
     }
   },
@@ -150,6 +246,21 @@ export const dbService = {
 
     if (error) {
       console.error('Erro ao excluir transação no Supabase:', error)
+      throw error
+    }
+  },
+
+  async deleteInstallmentGroup(groupId: string, userId: string): Promise<void> {
+    if (!supabase) throw new Error('Cliente Supabase não configurado.')
+
+    const { error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('installment_group_id', groupId)
+      .eq('user_id', userId)
+
+    if (error) {
+      console.error('Erro ao excluir grupo de parcelas no Supabase:', error)
       throw error
     }
   },
@@ -674,6 +785,10 @@ export const dbService = {
           payment_method: tx.paymentMethod,
           origin: tx.origin || 'import',
           notes: tx.notes || null,
+          installment_group_id: tx.installmentGroupId || null,
+          installment_number: tx.installmentNumber || 1,
+          installment_total: tx.installmentTotal || 1,
+          total_amount: tx.totalAmount || tx.amount,
         })
         importedTransactions++
       }

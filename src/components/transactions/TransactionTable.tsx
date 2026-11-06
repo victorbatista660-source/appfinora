@@ -194,9 +194,16 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({
                     {/* Description & Note */}
                     <td className="py-4 px-6">
                       <div className="flex flex-col">
-                        <span className="font-medium text-text-primary group-hover:text-primary transition-colors">
-                          {tx.description}
-                        </span>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-text-primary group-hover:text-primary transition-colors">
+                            {tx.description}
+                          </span>
+                          {tx.installmentTotal && tx.installmentTotal > 1 && (
+                            <span className="inline-flex items-center text-[10px] font-semibold text-primary bg-primary/10 border border-primary/20 px-2 py-0.5 rounded-full whitespace-nowrap">
+                              Parcela {tx.installmentNumber}/{tx.installmentTotal}
+                            </span>
+                          )}
+                        </div>
                         {tx.notes && (
                           <span className="text-[11px] text-text-secondary/80 mt-0.5 line-clamp-1 italic">
                             {tx.notes}

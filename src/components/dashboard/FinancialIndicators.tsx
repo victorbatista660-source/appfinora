@@ -110,6 +110,16 @@ export const FinancialIndicators: React.FC<FinancialIndicatorsProps> = ({
               <p className="text-[11px] text-text-secondary mt-1">
                 Limite restante para novas compras.
               </p>
+
+              {/* Fatura do Mês Selecionado */}
+              <div className="mt-2.5 pt-2 border-t border-border-line/70 flex items-center justify-between text-xs">
+                <span className="text-text-secondary font-medium">
+                  Fatura ({periodLabel}):
+                </span>
+                <span className="font-semibold text-danger font-display num-financial">
+                  {formatCurrency(metrics.creditUsedPeriod)}
+                </span>
+              </div>
             </div>
           </div>
 

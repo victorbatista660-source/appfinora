@@ -8,6 +8,61 @@ export interface AccountSettings {
 
 export type AccountCategory = 'debit' | 'credit' | 'meal'
 
+export interface InstallmentSplit {
+  installmentNumber: number
+  installmentTotal: number
+  amount: number
+  date: string // YYYY-MM-DD
+}
+
+/**
+ * Divide o valor total em N parcelas sem perder centavos:
+ * - Realiza todos os cálculos usando centavos inteiros (integers)
+ * - Ajusta qualquer resto de centavos na última parcela para fechar o valor exato
+ * - Avança os meses preservando o dia limite (ex: dia 31 em fevereiro cai no último dia do mês)
+ */
+export function splitInstallments(
+  totalAmount: number,
+  installmentsCount: number,
+  startDateStr: string
+): InstallmentSplit[] {
+  const totalCents = Math.round(totalAmount * 100)
+  const baseCents = Math.floor(totalCents / installmentsCount)
+  const remainderCents = totalCents - baseCents * installmentsCount
+
+  const [yearStr, monthStr, dayStr] = startDateStr.split('-')
+  const baseYear = parseInt(yearStr, 10)
+  const baseMonth = parseInt(monthStr, 10) // 1-12
+  const baseDay = parseInt(dayStr, 10)
+
+  const result: InstallmentSplit[] = []
+
+  for (let i = 0; i < installmentsCount; i++) {
+    const isLast = i === installmentsCount - 1
+    const cents = isLast ? baseCents + remainderCents : baseCents
+    const amount = cents / 100
+
+    // Avanço dos meses com proteção contra overflow de dias
+    const targetMonthIndex = baseMonth - 1 + i // 0-indexed
+    const targetYear = baseYear + Math.floor(targetMonthIndex / 12)
+    const targetMonth = (targetMonthIndex % 12) + 1 // 1-12
+
+    const daysInTargetMonth = new Date(targetYear, targetMonth, 0).getDate()
+    const targetDay = Math.min(baseDay, daysInTargetMonth)
+
+    const dateFormatted = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`
+
+    result.push({
+      installmentNumber: i + 1,
+      installmentTotal: installmentsCount,
+      amount,
+      date: dateFormatted,
+    })
+  }
+
+  return result
+}
+
 /**
  * Identifica a qual conta um método de pagamento pertence:
  * - credit: Cartão de Crédito
@@ -74,11 +129,6 @@ export function calculateFinancialMetrics(
   },
   previousPeriodKey?: string
 ): FinancialCalculationResult {
-  // Transações do período selecionado
-  const periodTransactions = allTransactions.filter((tx) =>
-    tx.date.startsWith(selectedPeriodKey)
-  )
-
   // ----------------------------------------------------
   // 1. CÁLCULO DA CONTA DÉBITO
   // Saldo = saldo inicial + todas receitas em débito − todas despesas em débito
@@ -91,9 +141,11 @@ export function calculateFinancialMetrics(
 
   // ----------------------------------------------------
   // 2. CÁLCULO DO CARTÃO DE CRÉDITO
-  // Limite disponível = limite total − todas as despesas em crédito em aberto
+  // Limite disponível = limite total − soma das despesas de crédito a partir do mês atual
+  // Parcelas de meses anteriores liberam o limite (faturas passadas pagas)
   // ----------------------------------------------------
-  let allCreditExpenses = 0
+  const currentMonthKey = new Date().toISOString().slice(0, 7)
+  let activeCreditExpenses = 0
   let periodCreditExpenses = 0
 
   // ----------------------------------------------------
@@ -118,7 +170,10 @@ export function calculateFinancialMetrics(
 
     if (accType === 'credit') {
       if (tx.type === 'expense') {
-        allCreditExpenses += tx.amount
+        const txMonth = tx.date.slice(0, 7)
+        if (txMonth >= currentMonthKey) {
+          activeCreditExpenses += tx.amount
+        }
         if (isPeriod) {
           periodCreditExpenses += tx.amount
         }
@@ -164,7 +219,7 @@ export function calculateFinancialMetrics(
   const mealBalance = settings.initialBalanceMeal + allMealIncome - allMealExpenses
 
   const creditLimit = settings.creditCardLimit
-  const creditUsedTotal = allCreditExpenses
+  const creditUsedTotal = activeCreditExpenses
   const creditAvailable = creditLimit - creditUsedTotal
   const creditUsedPercentage =
     creditLimit > 0 ? (creditUsedTotal / creditLimit) * 100 : 0

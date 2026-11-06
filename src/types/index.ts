@@ -39,6 +39,10 @@ export interface Transaction {
   paymentMethod: PaymentMethod
   origin?: TransactionOrigin
   notes?: string
+  installmentGroupId?: string
+  installmentNumber?: number
+  installmentTotal?: number
+  totalAmount?: number
 }
 
 export interface Budget {

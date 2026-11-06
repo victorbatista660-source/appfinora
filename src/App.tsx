@@ -24,13 +24,13 @@ import {
 import {
   calculateFinancialMetrics,
   FinancialCalculationResult,
+  splitInstallments,
 } from './lib/accountUtils'
 import {
   NavPage,
   Transaction,
   Budget,
   Goal,
-  PeriodSummary,
   MonthlyExpensePoint,
   CategoryDistribution,
   AccountSettings,
@@ -174,38 +174,113 @@ function AppContent() {
   }, [currentPeriodKey, transactions])
 
   // --- CRUD DE TRANSAÇÕES ---
-  const handleAddTransaction = async (newTxData: Omit<Transaction, 'id'>) => {
+  const handleAddTransaction = async (
+    newTxData: Omit<Transaction, 'id'>,
+    options?: { installmentsCount?: number }
+  ) => {
     if (!user) return
     try {
-      const created = await dbService.createTransaction(newTxData, user.id)
-      setTransactions((prev) => [created, ...prev])
-      showToast(`Lançamento "${created.description}" adicionado com sucesso.`)
+      const installmentsCount = options?.installmentsCount || 1
+
+      if (
+        installmentsCount > 1 &&
+        newTxData.type === 'expense' &&
+        newTxData.paymentMethod === 'Cartão de Crédito'
+      ) {
+        const groupId = crypto.randomUUID()
+        const totalAmount = newTxData.amount
+        const splits = splitInstallments(totalAmount, installmentsCount, newTxData.date)
+
+        const batchRows = splits.map((split) => ({
+          ...newTxData,
+          amount: split.amount,
+          date: split.date,
+          installmentGroupId: groupId,
+          installmentNumber: split.installmentNumber,
+          installmentTotal: split.installmentTotal,
+          totalAmount: totalAmount,
+        }))
+
+        const createdBatch = await dbService.createTransactionsBatch(batchRows, user.id)
+        setTransactions((prev) => [...createdBatch, ...prev])
+        showToast(`Compra no cartão em ${installmentsCount}x cadastrada com sucesso.`)
+      } else {
+        const created = await dbService.createTransaction(
+          {
+            ...newTxData,
+            installmentNumber: 1,
+            installmentTotal: 1,
+            totalAmount: newTxData.amount,
+          },
+          user.id
+        )
+        setTransactions((prev) => [created, ...prev])
+        showToast(`Lançamento "${created.description}" adicionado com sucesso.`)
+      }
     } catch (err: unknown) {
       console.error(err)
       showToast(err instanceof Error ? err.message : 'Erro ao cadastrar transação no Supabase.')
     }
   }
 
-  const handleUpdateTransaction = async (id: string, updatedTxData: Omit<Transaction, 'id'>) => {
+  const handleUpdateTransaction = async (
+    id: string,
+    updatedTxData: Omit<Transaction, 'id'>,
+    options?: { applyToGroup?: boolean }
+  ) => {
     if (!user) return
     try {
-      await dbService.updateTransaction(id, updatedTxData, user.id)
-      setTransactions((prev) =>
-        prev.map((tx) => (tx.id === id ? { ...updatedTxData, id } : tx))
-      )
-      showToast('Lançamento atualizado com sucesso.')
+      if (options?.applyToGroup && updatedTxData.installmentGroupId) {
+        await dbService.updateInstallmentGroup(
+          updatedTxData.installmentGroupId,
+          {
+            description: updatedTxData.description,
+            amount: updatedTxData.amount,
+          },
+          user.id
+        )
+        setTransactions((prev) =>
+          prev.map((tx) =>
+            tx.installmentGroupId === updatedTxData.installmentGroupId
+              ? {
+                  ...tx,
+                  description: updatedTxData.description,
+                  amount: updatedTxData.amount,
+                  establishment: updatedTxData.establishment,
+                  category: updatedTxData.category,
+                }
+              : tx
+          )
+        )
+        showToast('Todas as parcelas do grupo foram atualizadas com sucesso.')
+      } else {
+        await dbService.updateTransaction(id, updatedTxData, user.id)
+        setTransactions((prev) =>
+          prev.map((tx) => (tx.id === id ? { ...updatedTxData, id } : tx))
+        )
+        showToast('Lançamento atualizado com sucesso.')
+      }
     } catch (err: unknown) {
       console.error(err)
       showToast(err instanceof Error ? err.message : 'Erro ao atualizar transação no Supabase.')
     }
   }
 
-  const handleDeleteTransaction = async (id: string) => {
+  const handleDeleteTransaction = async (
+    id: string,
+    options?: { deleteMode?: 'single' | 'all'; groupId?: string }
+  ) => {
     if (!user) return
     try {
-      await dbService.deleteTransaction(id, user.id)
-      setTransactions((prev) => prev.filter((tx) => tx.id !== id))
-      showToast('Lançamento removido com sucesso.')
+      if (options?.deleteMode === 'all' && options.groupId) {
+        await dbService.deleteInstallmentGroup(options.groupId, user.id)
+        setTransactions((prev) => prev.filter((tx) => tx.installmentGroupId !== options.groupId))
+        showToast('Todas as parcelas da compra foram removidas com sucesso.')
+      } else {
+        await dbService.deleteTransaction(id, user.id)
+        setTransactions((prev) => prev.filter((tx) => tx.id !== id))
+        showToast('Lançamento removido com sucesso.')
+      }
     } catch (err: unknown) {
       console.error(err)
       showToast(err instanceof Error ? err.message : 'Erro ao excluir transação no Supabase.')
@@ -552,9 +627,8 @@ function AppContent() {
       <TransactionFormModal
         isOpen={isQuickAddOpen}
         onClose={() => setIsQuickAddOpen(false)}
-        onSave={(newTx) => {
-          handleAddTransaction(newTx)
-          showToast(`Lançamento "${newTx.description}" adicionado com sucesso.`)
+        onSave={(newTx, _id, options) => {
+          handleAddTransaction(newTx, { installmentsCount: options?.installmentsCount })
         }}
       />
     </div>
